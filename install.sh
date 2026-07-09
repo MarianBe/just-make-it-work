@@ -71,8 +71,11 @@ WORKER_MODEL="${JMIW_WORKER_MODEL:-$(pick_default 'sonnet' 'opus' || echo 'anthr
 SETUP_MODEL="${JMIW_SETUP_MODEL:-$(pick_default 'haiku' 'mini|nano|flash|lite' 'sonnet' || echo 'anthropic/claude-haiku-4-5')}"
 
 TTY=""
-if [ -r /dev/tty ] && [ -w /dev/tty ] && [ -s "$MODELS_FILE" ] &&
-  [ -z "${JMIW_ORCHESTRATOR_MODEL:-}${JMIW_WORKER_MODEL:-}${JMIW_SETUP_MODEL:-}" ]; then
+# -r/-w on /dev/tty isn't enough: without a controlling terminal the open
+# itself fails ("Device not configured"), so probe with a real open.
+if [ -s "$MODELS_FILE" ] &&
+  [ -z "${JMIW_ORCHESTRATOR_MODEL:-}${JMIW_WORKER_MODEL:-}${JMIW_SETUP_MODEL:-}" ] &&
+  { true </dev/tty; } 2>/dev/null && { true >/dev/tty; } 2>/dev/null; then
   TTY=1
 fi
 
@@ -167,9 +170,48 @@ choose_model() {
   done
 }
 
+role_intro() {
+  # $1 title, $2 description, $3 recommendation, $4 suggested model
+  [ -z "$TTY" ] && return 0
+  {
+    printf '\n\033[1;36m%s\033[0m\n' "$1"
+    printf '  %s\n' "$2"
+    printf '  Recommended: %s\n' "$3"
+    printf '  \033[2mSuggested default: %s\033[0m\n\n' "$4"
+  } >/dev/tty
+}
+
+role_picked() {
+  # $1 role, $2 chosen model
+  [ -z "$TTY" ] && return 0
+  printf '  \033[32m✓\033[0m %s → \033[1m%s\033[0m\n' "$1" "$2" >/dev/tty
+}
+
+if [ -n "$TTY" ]; then
+  {
+    printf '\n\033[1mModel selection\033[0m — three agents, three models.\n'
+    printf '\033[2mArrows/j/k move · enter selects · esc keeps the suggested default.\033[0m\n'
+  } >/dev/tty
+fi
+
+role_intro "Orchestrator" \
+  "Your main agent. Fetches the ticket, plans the work, and oversees everything — it delegates all implementation and never edits files itself." \
+  "a powerful reasoning model (Opus class)" "$ORCH_MODEL"
 ORCH_MODEL="$(choose_model "orchestrator" "$ORCH_MODEL")"
+role_picked "orchestrator" "$ORCH_MODEL"
+
+role_intro "Worker" \
+  "Does the actual implementation: writes code, edits files, runs tests. Gets one well-scoped task at a time from the orchestrator." \
+  "a strong, fast coding model (Sonnet class)" "$WORKER_MODEL"
 WORKER_MODEL="$(choose_model "worker" "$WORKER_MODEL")"
+role_picked "worker" "$WORKER_MODEL"
+
+role_intro "Setup" \
+  "Bootstraps fresh worktrees by following your repo's .opencode/setup.md (install deps, copy env files). Simple, literal work." \
+  "the cheapest model you have (Haiku/mini class)" "$SETUP_MODEL"
 SETUP_MODEL="$(choose_model "setup" "$SETUP_MODEL")"
+role_picked "setup" "$SETUP_MODEL"
+
 rm -f "$MODELS_FILE"
 
 set_model() {
