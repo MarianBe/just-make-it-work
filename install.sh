@@ -66,9 +66,9 @@ pick_default() {
   return 1
 }
 
-ORCH_MODEL="${JMIW_ORCHESTRATOR_MODEL:-$(pick_default 'opus' 'sonnet' || echo 'anthropic/claude-opus-4-8')}"
-WORKER_MODEL="${JMIW_WORKER_MODEL:-$(pick_default 'sonnet' 'opus' || echo 'anthropic/claude-sonnet-5')}"
-SETUP_MODEL="${JMIW_SETUP_MODEL:-$(pick_default 'haiku' 'mini|nano|flash|lite' 'sonnet' || echo 'anthropic/claude-haiku-4-5')}"
+ORCH_MODEL="${JMIW_ORCHESTRATOR_MODEL:-$(pick_default 'opus-4[.-]8$' 'opus' 'sonnet' || echo 'anthropic/claude-opus-4-8')}"
+WORKER_MODEL="${JMIW_WORKER_MODEL:-$(pick_default 'sonnet-5$' 'sonnet' 'opus' || echo 'anthropic/claude-sonnet-5')}"
+SETUP_MODEL="${JMIW_SETUP_MODEL:-$(pick_default 'haiku-4[.-]5$' 'haiku' 'mini|nano|flash|lite' 'sonnet' || echo 'anthropic/claude-haiku-4-5')}"
 
 TTY=""
 # -r/-w on /dev/tty isn't enough: without a controlling terminal the open
