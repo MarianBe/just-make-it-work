@@ -116,13 +116,12 @@ e.g. `github-copilot/claude-opus-4.8`), and asks you to confirm. Preference
 per role: orchestrator opus→sonnet, worker sonnet→opus, setup
 haiku→mini/nano/flash/lite→sonnet.
 
-With [fzf](https://github.com/junegunn/fzf) installed you get an arrow-key
-picker, nested by provider: choose the provider first, then fuzzy-search its
-models. Esc at the model level goes back to providers; Esc at the provider
-level keeps the suggested default. fzf is not preinstalled on macOS — the
-installer offers to `brew install fzf` when it's missing (interactive runs
-with Homebrew only). Declining, or no fzf/brew, falls back to the numbered
-list.
+Selection uses a built-in arrow-key picker (pure bash, no dependencies),
+nested by provider so long model lists stay manageable: pick the provider
+first, then one of its models. Arrow keys or j/k move, Enter selects, Esc at
+the model level goes back to providers, Esc at the provider level keeps the
+suggested default — so pressing Esc three times accepts all suggestions. The
+suggested provider/model is preselected at each level.
 
 Non-interactive installs (no tty) take the detected defaults. Skip the
 prompts entirely with env vars:

@@ -76,88 +76,96 @@ if [ -r /dev/tty ] && [ -w /dev/tty ] && [ -s "$MODELS_FILE" ] &&
   TTY=1
 fi
 
-HAVE_FZF=""
-if command -v fzf >/dev/null 2>&1; then
-  HAVE_FZF=1
-elif [ -n "$TTY" ] && command -v brew >/dev/null 2>&1; then
-  # fzf isn't preinstalled on macOS; offer it for the arrow-key picker
-  printf "fzf not found — install via Homebrew for an arrow-key model picker? [Y/n] " >/dev/tty
-  read -r ans </dev/tty || ans="n"
-  case "$ans" in
-    [nN]*) ;;
-    *)
-      if brew install fzf >/dev/tty 2>&1; then
-        HAVE_FZF=1
-      else
-        echo "fzf install failed, falling back to the numbered list" >/dev/tty
-      fi
-      ;;
-  esac
-fi
+# --- pure-bash arrow-key menu (no third-party dependencies) -------------------
+menu_select() {
+  # $1 header, $2 item to preselect (may be empty); menu items on stdin.
+  # Echoes the selection; returns 1 on esc/q. Renders on /dev/tty.
+  # Keys: up/down or j/k to move, enter to select, esc or q to cancel.
+  local header="$1" pre="${2:-}"
+  local items=() count=0 sel=0 top=0 vis=12 height drawn=0 i line key rest
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    items[count]="$line"
+    [ "$line" = "$pre" ] && sel=$count
+    count=$((count + 1))
+  done
+  [ "$count" -gt 0 ] || return 1
+  [ "$count" -lt "$vis" ] && vis=$count
+  height=$((vis + 1))
+  [ "$count" -gt "$vis" ] && height=$((height + 1))
 
-choose_model_fzf() {
-  # two-stage picker: provider first, then that provider's models.
-  # esc at provider level keeps the default; esc at model level goes back.
-  local role="$1" def="$2" prov model
+  printf '\033[?25l' >/dev/tty
   while true; do
-    prov="$(cut -d/ -f1 "$MODELS_FILE" | sort -u | fzf \
-      --height=40% --reverse --no-multi \
-      --prompt="$role > " \
-      --header="pick a provider · enter = drill in · esc = keep default ($def)")" ||
+    # keep the selection inside the viewport
+    [ "$sel" -lt "$top" ] && top=$sel
+    [ "$sel" -ge "$((top + vis))" ] && top=$((sel - vis + 1))
+    {
+      [ "$drawn" -eq 1 ] && printf '\033[%dA' "$height"
+      printf '\r\033[K%s\n' "$header"
+      for ((i = top; i < top + vis; i++)); do
+        if [ "$i" -eq "$sel" ]; then
+          printf '\r\033[K\033[7m> %s\033[0m\n' "${items[i]}"
+        else
+          printf '\r\033[K  %s\n' "${items[i]}"
+        fi
+      done
+      [ "$count" -gt "$vis" ] && printf '\r\033[K  … %d/%d\n' "$((sel + 1))" "$count"
+    } >/dev/tty
+    drawn=1
+
+    IFS= read -rsn1 key </dev/tty || key="q"
+    case "$key" in
+      $'\x1b')
+        rest=""
+        IFS= read -rsn2 -t 1 rest </dev/tty || true
+        case "$rest" in
+          '[A' | 'OA') sel=$(((sel + count - 1) % count)) ;;
+          '[B' | 'OB') sel=$(((sel + 1) % count)) ;;
+          '') # bare escape = cancel
+            printf '\033[%dA\033[J\033[?25h' "$height" >/dev/tty
+            return 1
+            ;;
+        esac
+        ;;
+      '') # enter
+        printf '\033[%dA\033[J\033[?25h' "$height" >/dev/tty
+        echo "${items[sel]}"
+        return 0
+        ;;
+      k) sel=$(((sel + count - 1) % count)) ;;
+      j) sel=$(((sel + 1) % count)) ;;
+      q)
+        printf '\033[%dA\033[J\033[?25h' "$height" >/dev/tty
+        return 1
+        ;;
+    esac
+  done
+}
+
+choose_model() {
+  # $1 role label, $2 detected default; echoes the chosen provider/model id.
+  # Nested: pick a provider, then one of its models. Esc at model level goes
+  # back to providers; esc at provider level keeps the default.
+  local role="$1" def="$2" prov model
+  if [ -z "$TTY" ]; then
+    echo "$def"
+    return
+  fi
+  while true; do
+    prov="$(cut -d/ -f1 "$MODELS_FILE" | sort -u | menu_select \
+      "$role — pick provider (enter = show models, esc = keep $def)" "${def%%/*}")" ||
       {
         echo "$def"
         return
       }
-    model="$(grep "^${prov}/" "$MODELS_FILE" | fzf \
-      --height=40% --reverse --no-multi \
-      --prompt="$role · $prov > " \
-      --header="pick a model · esc = back to providers")" &&
+    model="$(grep "^${prov}/" "$MODELS_FILE" | menu_select \
+      "$role · $prov — pick model (esc = back to providers)" "$def")" &&
       {
         echo "$model"
         return
       }
   done
 }
-
-choose_model_numeric() {
-  local role="$1" def="$2" ans picked
-  printf "%s model [enter = %s, or number/id from list]: " "$role" "$def" >/dev/tty
-  read -r ans </dev/tty || ans=""
-  case "$ans" in
-    "") picked="$def" ;;
-    *[!0-9]*) picked="$ans" ;;
-    *) picked="$(sed -n "${ans}p" "$MODELS_FILE")" ;;
-  esac
-  if [ -z "$picked" ]; then
-    picked="$def"
-  elif ! grep -qxF "$picked" "$MODELS_FILE"; then
-    echo "  note: '$picked' not in 'opencode models' output, using it anyway" >/dev/tty
-  fi
-  echo "$picked"
-}
-
-choose_model() {
-  # $1 role label, $2 detected default; echoes the chosen provider/model id
-  if [ -z "$TTY" ]; then
-    echo "$2"
-  elif [ -n "$HAVE_FZF" ]; then
-    choose_model_fzf "$1" "$2"
-  else
-    choose_model_numeric "$1" "$2"
-  fi
-}
-
-if [ -n "$TTY" ] && [ -z "$HAVE_FZF" ]; then
-  {
-    echo
-    echo "tip: install fzf (brew install fzf / apt install fzf) for an"
-    echo "     arrow-key model picker grouped by provider."
-    echo
-    echo "available models (from 'opencode models'):"
-    nl -ba "$MODELS_FILE" | sed 's/^/  /'
-    echo
-  } >/dev/tty
-fi
 
 ORCH_MODEL="$(choose_model "orchestrator" "$ORCH_MODEL")"
 WORKER_MODEL="$(choose_model "worker" "$WORKER_MODEL")"
