@@ -14,6 +14,8 @@ curl -fsSL https://raw.githubusercontent.com/MarianBe/just-make-it-work/main/ins
 
 *One command. No dependencies. Works with GitHub Copilot, Anthropic, or any opencode provider.*
 
+<img src="docs/demo.gif" alt="Installer demo: picking a model per agent with the built-in arrow-key menu" width="820">
+
 </div>
 
 ---
