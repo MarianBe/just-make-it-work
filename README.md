@@ -1,63 +1,108 @@
-# just-make-it-work
+<div align="center">
 
-Give [opencode](https://opencode.ai) a Linear or Jira ticket id. An **Opus
-orchestrator** fetches the ticket, writes a plan, and delegates the
-implementation to **Sonnet worker subagents** — inside a dedicated **git
-worktree per ticket**, so you can run several tickets in parallel.
+# 🎫 just-make-it-work
 
-## Install (one command)
+**Throw a ticket id at [opencode](https://opencode.ai). Get a reviewed, tested branch back.**
+
+An Opus orchestrator plans your Linear/Jira ticket and delegates the coding to
+Sonnet workers — each ticket in its own git worktree, so you can run five at
+once without them stepping on each other.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/MarianBe/just-make-it-work/main/install.sh | bash
 ```
 
-Then authenticate the trackers once (opens your browser):
+*One command. No dependencies. Works with GitHub Copilot, Anthropic, or any opencode provider.*
 
-```sh
-opencode mcp auth linear
-opencode mcp auth jira
-```
+</div>
 
-That's it. The installer puts:
+---
 
-| What | Where |
-|---|---|
-| `orchestrator` primary agent (Opus, can't edit files) | `~/.config/opencode/agents/orchestrator.md` |
-| `worker` subagent (Sonnet, does the implementation) | `~/.config/opencode/agents/worker.md` |
-| `setup` subagent (Haiku, bootstraps fresh worktrees) | `~/.config/opencode/agents/setup.md` |
-| `/ticket` command | `~/.config/opencode/commands/ticket.md` |
-| `ticket` wrapper CLI | `~/.local/bin/ticket` |
-| Linear + Jira remote MCP servers | merged into `~/.config/opencode/opencode.json` |
-
-## Usage
+## The workflow
 
 ```sh
 cd ~/code/my-app
 ticket ABC-123
 ```
 
-This:
+```
+creating worktree ../my-app-ABC-123 (branch ticket/ABC-123 from main)
+bootstrapping worktree via setup agent (.opencode/setup.md)
+# → opencode opens, orchestrator fetches ABC-123 from Linear/Jira,
+#   shows you its plan, and gets to work
+```
 
-1. Creates a git worktree at `../my-app-ABC-123` on branch `ticket/ABC-123`
-   (based on your default branch; pass a second arg to override:
-   `ticket ABC-123 develop`).
-2. Bootstraps the worktree: if your repo has a `.opencode/setup.md`, a cheap
-   Haiku `setup` agent reads it and executes the steps (see below).
-3. Launches the opencode TUI in that worktree with the orchestrator agent and
-   the ticket already queued.
+Meanwhile, in another terminal:
 
-The orchestrator then: fetches the ticket (tries Linear, falls back to Jira) →
-explores the code → shows you a plan → dispatches self-contained tasks to the
-Sonnet `worker` subagent (parallel where independent) → reviews diffs, runs
-tests → commits on `ticket/ABC-123`. It never edits files itself — write/edit
-tools are disabled on the orchestrator, so all implementation goes through
-workers.
+```sh
+ticket XYZ-456        # second ticket, second worktree, zero collisions
+```
 
-### Worktree setup: `.opencode/setup.md`
+Come back later with feedback:
 
-A fresh worktree is a full checkout of tracked files, but gitignored things
-(`node_modules`, `.env`, generated code) are missing. Describe how to fix that
-in plain language in `.opencode/setup.md`, committed to your repo:
+```sh
+ticket ABC-123 the modal still flickers on iOS
+```
+
+Same session, full context, keeps going.
+
+## How it works
+
+```mermaid
+flowchart LR
+    T["🎫 ticket ABC-123"] --> W["🌳 git worktree<br/>../repo-ABC-123<br/>branch ticket/ABC-123"]
+    W --> S["🔧 setup agent<br/><i>Haiku · cheap</i><br/>reads .opencode/setup.md"]
+    S --> O["🧠 orchestrator<br/><i>Opus · plans &amp; reviews</i><br/>fetches ticket, writes plan"]
+    O -->|task| A["⚙️ worker<br/><i>Sonnet · implements</i>"]
+    O -->|task| B["⚙️ worker<br/><i>Sonnet · implements</i>"]
+    A --> V["✅ orchestrator verifies,<br/>runs tests, commits"]
+    B --> V
+```
+
+Three agents, three jobs, three price points:
+
+| Agent | Model | Job |
+|---|---|---|
+| 🧠 `orchestrator` | Opus | Fetches the ticket, explores the code, presents a plan, delegates, reviews diffs, runs tests, commits. **Cannot edit files** — write/edit tools are disabled, so implementation is forced through workers. |
+| ⚙️ `worker` | Sonnet | Executes one self-contained task at a time: writes code, runs checks, reports back. No scope creep. |
+| 🔧 `setup` | Haiku | Bootstraps fresh worktrees from natural-language instructions. Literal executor, never touches app code. |
+
+The orchestrator tries Linear first, falls back to Jira (ticket ids look the
+same in both), runs independent tasks in parallel, and iterates on failures
+until the test suite is green. It commits on `ticket/ABC-123` and never pushes
+unless you ask.
+
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MarianBe/just-make-it-work/main/install.sh | bash
+```
+
+The installer detects your available models (via `opencode models`) and walks
+you through picking one per agent with a built-in arrow-key menu — nested by
+provider, suggested defaults preselected, Esc-Esc-Esc accepts everything.
+Pure bash. Nothing else to install.
+
+Then authenticate your tracker(s) once (opens a browser):
+
+```sh
+opencode mcp auth linear
+opencode mcp auth jira
+```
+
+What lands where:
+
+| What | Where |
+|---|---|
+| `orchestrator`, `worker`, `setup` agents | `~/.config/opencode/agents/*.md` |
+| `/ticket` command | `~/.config/opencode/commands/ticket.md` |
+| `ticket` CLI | `~/.local/bin/ticket` |
+| Linear + Jira remote MCP servers | merged into `~/.config/opencode/opencode.json` (existing config untouched) |
+
+## Teach it your repo: `.opencode/setup.md`
+
+A fresh worktree has all tracked files but no `node_modules`, no `.env`, no
+generated code. Describe the fix in plain language, committed to your repo:
 
 ```markdown
 # Worktree setup
@@ -67,110 +112,75 @@ in plain language in `.opencode/setup.md`, committed to your repo:
 - Run `pnpm db:generate`.
 ```
 
-On every fresh worktree, `ticket` runs the Haiku-powered `setup` agent
-non-interactively against this file before opening the TUI. It executes the
-steps literally, knows the main checkout is the first entry of
-`git worktree list`, retries the obvious way once on failure, and reports —
-it never touches application code and never commits. No file → step is
-skipped. The orchestrator also dispatches `setup` itself if it lands in an
-unbootstrapped worktree (e.g. desktop-app worktree flow).
+On every fresh worktree the Haiku `setup` agent executes this before the
+orchestrator starts. It knows the main checkout is the first entry of
+`git worktree list`, retries the obvious way once on failure, and reports.
+No file → step skipped. The orchestrator also dispatches `setup` itself if it
+lands in an unbootstrapped worktree (e.g. the desktop app's worktree flow).
 
-### Parallel tickets
-
-Each ticket lives in its own worktree + branch + opencode session. Open another
-terminal (or tmux pane):
+## Command reference
 
 ```sh
-ticket XYZ-456
+ticket ABC-123                    # new worktree + branch, orchestrator starts
+ticket ABC-123 develop            # base the new branch on 'develop'
+ticket ABC-123                    # worktree exists → continue last session
+ticket ABC-123 <feedback words>   # continue + send feedback into the session
+ticket continue ABC-123 [words]   # explicit continue (alias: resume)
+ticket list                       # ticket worktrees for this repo
+ticket cleanup ABC-123            # remove worktree after merge (branch kept)
+ticket cleanup ABC-123 --force    # discard uncommitted changes too
 ```
 
-Nothing collides — separate directories, separate branches.
+Sessions are scoped per worktree directory, so each ticket resumes its own
+conversation even with many in flight. Once a worktree exists, extra args are
+feedback — the base branch only matters at creation.
 
-### Picking work back up / giving feedback
-
-When the worktree already exists, `ticket` continues the ticket's last
-opencode session (full conversation context intact) instead of starting
-over:
-
-```sh
-ticket ABC-123                                 # reopen last session
-ticket ABC-123 the modal still flickers on iOS # reopen + send feedback
-ticket continue ABC-123                        # explicit form (alias: resume)
-ticket continue ABC-123 address the PR review comments
-```
-
-opencode scopes its session list to the current worktree directory, so each
-ticket resumes its own session even with many tickets in flight. Note: when
-the worktree exists, extra arguments are feedback, not a base branch — the
-base only matters at creation time.
-
-### Housekeeping
-
-```sh
-ticket list                    # worktrees for this repo
-ticket cleanup ABC-123         # remove worktree after merging (keeps branch)
-ticket cleanup ABC-123 --force # discard uncommitted changes too
-```
-
-Existing `ticket/ABC-123` branches are reused when the worktree is recreated.
-
-### Without the wrapper
-
-Inside any opencode session you can also run the command directly:
+Inside any opencode session (including the desktop app — create the session
+in a worktree via the new-session view) you can also just run:
 
 ```
 /ticket ABC-123
 ```
 
-In the **desktop app**, create a new session, pick "worktree" in the
-new-session view, then run `/ticket ABC-123` — same result as the CLI wrapper.
-
 ## Models
 
-The installer runs `opencode models`, suggests a model per role from whatever
-providers you actually have (works with GitHub Copilot, Anthropic, etc. —
-e.g. `github-copilot/claude-opus-4.8`), and asks you to confirm. Preference
-per role: orchestrator opus→sonnet, worker sonnet→opus, setup
-haiku→mini/nano/flash/lite→sonnet.
+Defaults suggested by the installer: **Opus 4.8** (orchestrator),
+**Sonnet 5** (worker), **Haiku 4.5** (setup) — matched against whatever your
+providers actually offer, e.g. `github-copilot/claude-opus-4.8`. Fallback
+chains handle lists without those exact versions.
 
-Selection uses a built-in arrow-key picker (pure bash, no dependencies),
-nested by provider so long model lists stay manageable: pick the provider
-first, then one of its models. Arrow keys or j/k move, Enter selects, Esc at
-the model level goes back to providers, Esc at the provider level keeps the
-suggested default — so pressing Esc three times accepts all suggestions. The
-suggested provider/model is preselected at each level.
-
-Non-interactive installs (no tty) take the detected defaults. Skip the
-prompts entirely with env vars:
+Non-interactive installs take the detected defaults; skip prompts entirely
+with env vars:
 
 ```sh
-JMIW_ORCHESTRATOR_MODEL=github-copilot/claude-opus-41 \
-JMIW_WORKER_MODEL=github-copilot/claude-sonnet-45 \
-JMIW_SETUP_MODEL=github-copilot/claude-haiku-45 \
+JMIW_ORCHESTRATOR_MODEL=github-copilot/claude-opus-4.8 \
+JMIW_WORKER_MODEL=github-copilot/claude-sonnet-5 \
+JMIW_SETUP_MODEL=github-copilot/claude-haiku-4.5 \
   bash install.sh
 ```
 
-Change later by editing the `model:` line in `~/.config/opencode/agents/*.md`,
-or override per-agent in `opencode.json`:
+Change later: edit the `model:` line in `~/.config/opencode/agents/*.md`, or
+override per-agent in `opencode.json`:
 
 ```json
 {
   "agent": {
-    "worker": { "model": "github-copilot/claude-sonnet-45" }
+    "worker": { "model": "github-copilot/claude-sonnet-5" }
   }
 }
 ```
 
-If `opencode` isn't installed yet when you run the installer, the files keep
-the Anthropic defaults (`anthropic/claude-opus-4-8`, `anthropic/claude-sonnet-5`,
-`anthropic/claude-haiku-4-5`) — rerun the installer after setting up opencode,
-or edit the agent files.
+If `opencode` isn't installed when you run the installer, the agent files keep
+Anthropic defaults — rerun the installer afterwards or edit the files.
 
-## Jira note
+## Notes
 
-The installer registers Atlassian's remote MCP (`https://mcp.atlassian.com/v1/sse`).
-If your org runs Jira Data Center / self-hosted, replace the `jira` entry in
-`~/.config/opencode/opencode.json` with your own MCP server.
+- **Self-hosted Jira?** The installer registers Atlassian's cloud MCP
+  (`https://mcp.atlassian.com/v1/sse`). For Jira Data Center, replace the
+  `jira` entry in `~/.config/opencode/opencode.json` with your own MCP server.
+- **Trust model:** `.opencode/setup.md` instructions run unprompted in fresh
+  worktrees (the setup agent has bash allowed). Treat the file like you'd
+  treat a Makefile — trusted input, review it in PRs.
 
 ## Uninstall
 
