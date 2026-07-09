@@ -112,9 +112,15 @@ new-session view, then run `/ticket ABC-123` — same result as the CLI wrapper.
 
 The installer runs `opencode models`, suggests a model per role from whatever
 providers you actually have (works with GitHub Copilot, Anthropic, etc. —
-e.g. `github-copilot/claude-opus-41`), and asks you to confirm or pick from a
-numbered list. Preference per role: orchestrator opus→sonnet, worker
-sonnet→opus, setup haiku→mini/nano/flash/lite→sonnet.
+e.g. `github-copilot/claude-opus-4.8`), and asks you to confirm. Preference
+per role: orchestrator opus→sonnet, worker sonnet→opus, setup
+haiku→mini/nano/flash/lite→sonnet.
+
+With [fzf](https://github.com/junegunn/fzf) installed you get an arrow-key
+picker, nested by provider: choose the provider first, then fuzzy-search its
+models. Esc at the model level goes back to providers; Esc at the provider
+level keeps the suggested default. Without fzf it falls back to a numbered
+list.
 
 Non-interactive installs (no tty) take the detected defaults. Skip the
 prompts entirely with env vars:

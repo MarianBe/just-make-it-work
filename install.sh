@@ -76,13 +76,37 @@ if [ -r /dev/tty ] && [ -w /dev/tty ] && [ -s "$MODELS_FILE" ] &&
   TTY=1
 fi
 
-choose_model() {
-  # $1 role label, $2 detected default; echoes the chosen provider/model id
+HAVE_FZF=""
+if command -v fzf >/dev/null 2>&1; then
+  HAVE_FZF=1
+fi
+
+choose_model_fzf() {
+  # two-stage picker: provider first, then that provider's models.
+  # esc at provider level keeps the default; esc at model level goes back.
+  local role="$1" def="$2" prov model
+  while true; do
+    prov="$(cut -d/ -f1 "$MODELS_FILE" | sort -u | fzf \
+      --height=40% --reverse --no-multi \
+      --prompt="$role > " \
+      --header="pick a provider · enter = drill in · esc = keep default ($def)")" ||
+      {
+        echo "$def"
+        return
+      }
+    model="$(grep "^${prov}/" "$MODELS_FILE" | fzf \
+      --height=40% --reverse --no-multi \
+      --prompt="$role · $prov > " \
+      --header="pick a model · esc = back to providers")" &&
+      {
+        echo "$model"
+        return
+      }
+  done
+}
+
+choose_model_numeric() {
   local role="$1" def="$2" ans picked
-  if [ -z "$TTY" ]; then
-    echo "$def"
-    return
-  fi
   printf "%s model [enter = %s, or number/id from list]: " "$role" "$def" >/dev/tty
   read -r ans </dev/tty || ans=""
   case "$ans" in
@@ -98,8 +122,22 @@ choose_model() {
   echo "$picked"
 }
 
-if [ -n "$TTY" ]; then
+choose_model() {
+  # $1 role label, $2 detected default; echoes the chosen provider/model id
+  if [ -z "$TTY" ]; then
+    echo "$2"
+  elif [ -n "$HAVE_FZF" ]; then
+    choose_model_fzf "$1" "$2"
+  else
+    choose_model_numeric "$1" "$2"
+  fi
+}
+
+if [ -n "$TTY" ] && [ -z "$HAVE_FZF" ]; then
   {
+    echo
+    echo "tip: install fzf (brew install fzf / apt install fzf) for an"
+    echo "     arrow-key model picker grouped by provider."
     echo
     echo "available models (from 'opencode models'):"
     nl -ba "$MODELS_FILE" | sed 's/^/  /'
@@ -107,9 +145,9 @@ if [ -n "$TTY" ]; then
   } >/dev/tty
 fi
 
-ORCH_MODEL="$(choose_model "orchestrator (planning, needs the strong model)" "$ORCH_MODEL")"
-WORKER_MODEL="$(choose_model "worker (implementation)" "$WORKER_MODEL")"
-SETUP_MODEL="$(choose_model "setup (worktree bootstrap, cheapest is fine)" "$SETUP_MODEL")"
+ORCH_MODEL="$(choose_model "orchestrator" "$ORCH_MODEL")"
+WORKER_MODEL="$(choose_model "worker" "$WORKER_MODEL")"
+SETUP_MODEL="$(choose_model "setup" "$SETUP_MODEL")"
 rm -f "$MODELS_FILE"
 
 set_model() {
