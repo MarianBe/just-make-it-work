@@ -110,17 +110,37 @@ new-session view, then run `/ticket ABC-123` — same result as the CLI wrapper.
 
 ## Models
 
-Defaults: orchestrator `anthropic/claude-opus-4-8`, worker
-`anthropic/claude-sonnet-5`. Change the `model:` line in
-`~/.config/opencode/agents/*.md`, or override per-agent in `opencode.json`:
+The installer runs `opencode models`, suggests a model per role from whatever
+providers you actually have (works with GitHub Copilot, Anthropic, etc. —
+e.g. `github-copilot/claude-opus-41`), and asks you to confirm or pick from a
+numbered list. Preference per role: orchestrator opus→sonnet, worker
+sonnet→opus, setup haiku→mini/nano/flash/lite→sonnet.
+
+Non-interactive installs (no tty) take the detected defaults. Skip the
+prompts entirely with env vars:
+
+```sh
+JMIW_ORCHESTRATOR_MODEL=github-copilot/claude-opus-41 \
+JMIW_WORKER_MODEL=github-copilot/claude-sonnet-45 \
+JMIW_SETUP_MODEL=github-copilot/claude-haiku-45 \
+  bash install.sh
+```
+
+Change later by editing the `model:` line in `~/.config/opencode/agents/*.md`,
+or override per-agent in `opencode.json`:
 
 ```json
 {
   "agent": {
-    "worker": { "model": "anthropic/claude-sonnet-5" }
+    "worker": { "model": "github-copilot/claude-sonnet-45" }
   }
 }
 ```
+
+If `opencode` isn't installed yet when you run the installer, the files keep
+the Anthropic defaults (`anthropic/claude-opus-4-8`, `anthropic/claude-sonnet-5`,
+`anthropic/claude-haiku-4-5`) — rerun the installer after setting up opencode,
+or edit the agent files.
 
 ## Jira note
 

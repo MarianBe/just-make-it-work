@@ -42,6 +42,89 @@ cp "$SRC/opencode/commands/ticket.md" "$CONFIG_DIR/commands/ticket.md"
 install -m 755 "$SRC/bin/ticket" "$BIN_DIR/ticket"
 echo "installed agents, /ticket command, and 'ticket' CLI"
 
+# --- pick models per agent -----------------------------------------------------
+# Detects available models via 'opencode models' (works for any provider,
+# e.g. github-copilot/claude-opus-41), suggests a default per role, and asks
+# on the terminal. Non-interactive (no tty) uses the detected defaults.
+# Override without prompts: JMIW_ORCHESTRATOR_MODEL / JMIW_WORKER_MODEL /
+# JMIW_SETUP_MODEL.
+MODELS_FILE="$(mktemp)"
+if command -v opencode >/dev/null 2>&1; then
+  opencode models >"$MODELS_FILE" 2>/dev/null || true
+fi
+
+pick_default() {
+  # first available model matching the preference patterns, in order
+  local pat m
+  for pat in "$@"; do
+    m="$(grep -iE -- "$pat" "$MODELS_FILE" | head -1)" || true
+    if [ -n "$m" ]; then
+      echo "$m"
+      return 0
+    fi
+  done
+  return 1
+}
+
+ORCH_MODEL="${JMIW_ORCHESTRATOR_MODEL:-$(pick_default 'opus' 'sonnet' || echo 'anthropic/claude-opus-4-8')}"
+WORKER_MODEL="${JMIW_WORKER_MODEL:-$(pick_default 'sonnet' 'opus' || echo 'anthropic/claude-sonnet-5')}"
+SETUP_MODEL="${JMIW_SETUP_MODEL:-$(pick_default 'haiku' 'mini|nano|flash|lite' 'sonnet' || echo 'anthropic/claude-haiku-4-5')}"
+
+TTY=""
+if [ -r /dev/tty ] && [ -w /dev/tty ] && [ -s "$MODELS_FILE" ] &&
+  [ -z "${JMIW_ORCHESTRATOR_MODEL:-}${JMIW_WORKER_MODEL:-}${JMIW_SETUP_MODEL:-}" ]; then
+  TTY=1
+fi
+
+choose_model() {
+  # $1 role label, $2 detected default; echoes the chosen provider/model id
+  local role="$1" def="$2" ans picked
+  if [ -z "$TTY" ]; then
+    echo "$def"
+    return
+  fi
+  printf "%s model [enter = %s, or number/id from list]: " "$role" "$def" >/dev/tty
+  read -r ans </dev/tty || ans=""
+  case "$ans" in
+    "") picked="$def" ;;
+    *[!0-9]*) picked="$ans" ;;
+    *) picked="$(sed -n "${ans}p" "$MODELS_FILE")" ;;
+  esac
+  if [ -z "$picked" ]; then
+    picked="$def"
+  elif ! grep -qxF "$picked" "$MODELS_FILE"; then
+    echo "  note: '$picked' not in 'opencode models' output, using it anyway" >/dev/tty
+  fi
+  echo "$picked"
+}
+
+if [ -n "$TTY" ]; then
+  {
+    echo
+    echo "available models (from 'opencode models'):"
+    nl -ba "$MODELS_FILE" | sed 's/^/  /'
+    echo
+  } >/dev/tty
+fi
+
+ORCH_MODEL="$(choose_model "orchestrator (planning, needs the strong model)" "$ORCH_MODEL")"
+WORKER_MODEL="$(choose_model "worker (implementation)" "$WORKER_MODEL")"
+SETUP_MODEL="$(choose_model "setup (worktree bootstrap, cheapest is fine)" "$SETUP_MODEL")"
+rm -f "$MODELS_FILE"
+
+set_model() {
+  # $1 agent file, $2 model id
+  local tmp
+  tmp="$(mktemp)"
+  sed "s|^model: .*|model: $2|" "$1" >"$tmp" && mv "$tmp" "$1"
+}
+set_model "$CONFIG_DIR/agents/orchestrator.md" "$ORCH_MODEL"
+set_model "$CONFIG_DIR/agents/worker.md" "$WORKER_MODEL"
+set_model "$CONFIG_DIR/agents/setup.md" "$SETUP_MODEL"
+
+echo "models: orchestrator=$ORCH_MODEL worker=$WORKER_MODEL setup=$SETUP_MODEL"
+echo "  (change later: edit 'model:' in $CONFIG_DIR/agents/*.md)"
+
 # --- merge MCP servers into opencode.json ------------------------------------
 MCP_SNIPPET='{
   "linear": { "type": "remote", "url": "https://mcp.linear.app/mcp", "enabled": true },
