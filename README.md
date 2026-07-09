@@ -86,6 +86,24 @@ ticket XYZ-456
 
 Nothing collides — separate directories, separate branches.
 
+### Picking work back up / giving feedback
+
+When the worktree already exists, `ticket` continues the ticket's last
+opencode session (full conversation context intact) instead of starting
+over:
+
+```sh
+ticket ABC-123                                 # reopen last session
+ticket ABC-123 the modal still flickers on iOS # reopen + send feedback
+ticket continue ABC-123                        # explicit form (alias: resume)
+ticket continue ABC-123 address the PR review comments
+```
+
+opencode scopes its session list to the current worktree directory, so each
+ticket resumes its own session even with many tickets in flight. Note: when
+the worktree exists, extra arguments are feedback, not a base branch — the
+base only matters at creation time.
+
 ### Housekeeping
 
 ```sh
@@ -94,8 +112,7 @@ ticket cleanup ABC-123         # remove worktree after merging (keeps branch)
 ticket cleanup ABC-123 --force # discard uncommitted changes too
 ```
 
-Re-running `ticket ABC-123` on an existing worktree just reopens opencode
-there. Existing `ticket/ABC-123` branches are reused.
+Existing `ticket/ABC-123` branches are reused when the worktree is recreated.
 
 ### Without the wrapper
 

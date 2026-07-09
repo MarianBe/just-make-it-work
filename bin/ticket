@@ -3,10 +3,12 @@
 # ticket — start an opencode orchestrator session for a ticket in its own
 # git worktree, so multiple tickets can run in parallel.
 #
-#   ticket ABC-123              create worktree + branch ticket/ABC-123, launch opencode
-#   ticket ABC-123 develop      base the new branch on 'develop' instead of the default branch
-#   ticket cleanup ABC-123      remove the worktree (branch is kept)
-#   ticket list                 list ticket worktrees for this repo
+#   ticket ABC-123                     create worktree + branch ticket/ABC-123, launch opencode
+#   ticket ABC-123 develop             base the new branch on 'develop' instead of the default branch
+#   ticket ABC-123 fix the tests too   worktree exists: continue its session with this feedback
+#   ticket continue ABC-123 [words..]  continue the ticket's last session (feedback optional)
+#   ticket cleanup ABC-123             remove the worktree (branch is kept)
+#   ticket list                        list ticket worktrees for this repo
 #
 set -euo pipefail
 
@@ -16,8 +18,21 @@ die() {
 }
 
 usage() {
-  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
+}
+
+continue_session() {
+  # $1 worktree dir; remaining args = optional feedback for the session
+  local wt="$1"
+  shift
+  cd "$wt"
+  # opencode scopes the session list to the current worktree directory, so
+  # --continue picks up this ticket's latest session, not another ticket's
+  if [ $# -gt 0 ]; then
+    exec opencode --continue --prompt "$*"
+  fi
+  exec opencode --continue
 }
 
 [ $# -ge 1 ] || usage 1
@@ -43,6 +58,14 @@ case "$1" in
     git -C "$root" worktree list | grep -F "${repo_name}-" || echo "no ticket worktrees"
     exit 0
     ;;
+  continue | resume)
+    [ $# -ge 2 ] || die "usage: ticket continue <TICKET-ID> [feedback...]"
+    sanitize "$2"
+    wt="$(worktree_path "$2")"
+    [ -d "$wt" ] || die "no worktree at $wt (start one with: ticket $2)"
+    shift 2
+    continue_session "$wt" "$@"
+    ;;
   cleanup)
     [ $# -ge 2 ] || die "usage: ticket cleanup <TICKET-ID> [--force]"
     sanitize "$2"
@@ -60,33 +83,36 @@ case "$1" in
 esac
 
 id="$1"
-base="${2:-}"
 sanitize "$id"
 wt="$(worktree_path "$id")"
 branch="ticket/${id}"
 
-if [ ! -d "$wt" ]; then
-  if git -C "$root" show-ref --verify --quiet "refs/heads/${branch}"; then
-    echo "branch ${branch} exists, reusing it"
-    git -C "$root" worktree add "$wt" "$branch"
-  else
-    if [ -z "$base" ]; then
-      base="$(git -C "$root" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')" || true
-      [ -n "$base" ] || base="$(git -C "$root" symbolic-ref --short HEAD)"
-    fi
-    echo "creating worktree $wt (branch ${branch} from ${base})"
-    git -C "$root" worktree add -b "$branch" "$wt" "$base"
-  fi
-  # bootstrap fresh worktree: setup agent executes the repo's .opencode/setup.md
-  # (natural-language setup instructions: install deps, copy env files, ...)
-  if [ -f "$wt/.opencode/setup.md" ]; then
-    echo "bootstrapping worktree via setup agent (.opencode/setup.md)"
-    (cd "$wt" && opencode run --agent setup \
-      "Set up this fresh git worktree by following .opencode/setup.md.") ||
-      echo "ticket: warning: setup agent reported failures; continuing anyway" >&2
-  fi
+if [ -d "$wt" ]; then
+  # worktree already exists: continue its last session, extra args = feedback
+  echo "worktree $wt exists, continuing its last session"
+  shift
+  continue_session "$wt" "$@"
+fi
+
+base="${2:-}"
+if git -C "$root" show-ref --verify --quiet "refs/heads/${branch}"; then
+  echo "branch ${branch} exists, reusing it"
+  git -C "$root" worktree add "$wt" "$branch"
 else
-  echo "worktree $wt already exists, resuming there"
+  if [ -z "$base" ]; then
+    base="$(git -C "$root" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')" || true
+    [ -n "$base" ] || base="$(git -C "$root" symbolic-ref --short HEAD)"
+  fi
+  echo "creating worktree $wt (branch ${branch} from ${base})"
+  git -C "$root" worktree add -b "$branch" "$wt" "$base"
+fi
+# bootstrap fresh worktree: setup agent executes the repo's .opencode/setup.md
+# (natural-language setup instructions: install deps, copy env files, ...)
+if [ -f "$wt/.opencode/setup.md" ]; then
+  echo "bootstrapping worktree via setup agent (.opencode/setup.md)"
+  (cd "$wt" && opencode run --agent setup \
+    "Set up this fresh git worktree by following .opencode/setup.md.") ||
+    echo "ticket: warning: setup agent reported failures; continuing anyway" >&2
 fi
 
 cd "$wt"
