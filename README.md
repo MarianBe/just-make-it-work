@@ -24,6 +24,7 @@ That's it. The installer puts:
 |---|---|
 | `orchestrator` primary agent (Opus, can't edit files) | `~/.config/opencode/agents/orchestrator.md` |
 | `worker` subagent (Sonnet, does the implementation) | `~/.config/opencode/agents/worker.md` |
+| `setup` subagent (Haiku, bootstraps fresh worktrees) | `~/.config/opencode/agents/setup.md` |
 | `/ticket` command | `~/.config/opencode/commands/ticket.md` |
 | `ticket` wrapper CLI | `~/.local/bin/ticket` |
 | Linear + Jira remote MCP servers | merged into `~/.config/opencode/opencode.json` |
@@ -40,8 +41,8 @@ This:
 1. Creates a git worktree at `../my-app-ABC-123` on branch `ticket/ABC-123`
    (based on your default branch; pass a second arg to override:
    `ticket ABC-123 develop`).
-2. Runs `.opencode/worktree-setup.sh` from your repo if it exists (put
-   `.env` copying, `pnpm install`, etc. there).
+2. Bootstraps the worktree: if your repo has a `.opencode/setup.md`, a cheap
+   Haiku `setup` agent reads it and executes the steps (see below).
 3. Launches the opencode TUI in that worktree with the orchestrator agent and
    the ticket already queued.
 
@@ -51,6 +52,28 @@ Sonnet `worker` subagent (parallel where independent) → reviews diffs, runs
 tests → commits on `ticket/ABC-123`. It never edits files itself — write/edit
 tools are disabled on the orchestrator, so all implementation goes through
 workers.
+
+### Worktree setup: `.opencode/setup.md`
+
+A fresh worktree is a full checkout of tracked files, but gitignored things
+(`node_modules`, `.env`, generated code) are missing. Describe how to fix that
+in plain language in `.opencode/setup.md`, committed to your repo:
+
+```markdown
+# Worktree setup
+
+- Copy `.env` and `.env.local` from the main checkout (they're gitignored).
+- Run `pnpm install --frozen-lockfile`.
+- Run `pnpm db:generate`.
+```
+
+On every fresh worktree, `ticket` runs the Haiku-powered `setup` agent
+non-interactively against this file before opening the TUI. It executes the
+steps literally, knows the main checkout is the first entry of
+`git worktree list`, retries the obvious way once on failure, and reports —
+it never touches application code and never commits. No file → step is
+skipped. The orchestrator also dispatches `setup` itself if it lands in an
+unbootstrapped worktree (e.g. desktop-app worktree flow).
 
 ### Parallel tickets
 
@@ -108,7 +131,7 @@ If your org runs Jira Data Center / self-hosted, replace the `jira` entry in
 ## Uninstall
 
 ```sh
-rm ~/.config/opencode/agents/{orchestrator,worker}.md \
+rm ~/.config/opencode/agents/{orchestrator,worker,setup}.md \
    ~/.config/opencode/commands/ticket.md \
    ~/.local/bin/ticket
 ```

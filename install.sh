@@ -7,6 +7,7 @@
 # Installs:
 #   ~/.config/opencode/agents/orchestrator.md   opus orchestrator (primary agent)
 #   ~/.config/opencode/agents/worker.md         sonnet worker (subagent)
+#   ~/.config/opencode/agents/setup.md          haiku worktree bootstrapper (subagent)
 #   ~/.config/opencode/commands/ticket.md       /ticket command
 #   ~/.local/bin/ticket                         worktree wrapper CLI
 # and merges Linear + Jira MCP servers into ~/.config/opencode/opencode.json.
@@ -36,6 +37,7 @@ fi
 mkdir -p "$CONFIG_DIR/agents" "$CONFIG_DIR/commands" "$BIN_DIR"
 cp "$SRC/opencode/agents/orchestrator.md" "$CONFIG_DIR/agents/orchestrator.md"
 cp "$SRC/opencode/agents/worker.md" "$CONFIG_DIR/agents/worker.md"
+cp "$SRC/opencode/agents/setup.md" "$CONFIG_DIR/agents/setup.md"
 cp "$SRC/opencode/commands/ticket.md" "$CONFIG_DIR/commands/ticket.md"
 install -m 755 "$SRC/bin/ticket" "$BIN_DIR/ticket"
 echo "installed agents, /ticket command, and 'ticket' CLI"

@@ -36,6 +36,10 @@ When given a ticket id (e.g. `ABC-123`), work through these phases in order:
   delegate broad exploration to the built-in `explore` subagent.
 - Identify the files that need to change, existing patterns to follow, and the
   project's test/build/lint commands (check package.json, Makefile, CI config).
+- If you are in a fresh worktree that hasn't been set up (missing
+  node_modules, missing .env) and `.opencode/setup.md` exists, dispatch the
+  `setup` subagent to bootstrap the environment before any implementation
+  tasks.
 
 ### 3. Plan
 

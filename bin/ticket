@@ -77,10 +77,13 @@ if [ ! -d "$wt" ]; then
     echo "creating worktree $wt (branch ${branch} from ${base})"
     git -C "$root" worktree add -b "$branch" "$wt" "$base"
   fi
-  # optional per-repo setup hook (copy .env, install deps, ...)
-  if [ -x "$root/.opencode/worktree-setup.sh" ]; then
-    echo "running .opencode/worktree-setup.sh"
-    (cd "$wt" && "$root/.opencode/worktree-setup.sh")
+  # bootstrap fresh worktree: setup agent executes the repo's .opencode/setup.md
+  # (natural-language setup instructions: install deps, copy env files, ...)
+  if [ -f "$wt/.opencode/setup.md" ]; then
+    echo "bootstrapping worktree via setup agent (.opencode/setup.md)"
+    (cd "$wt" && opencode run --agent setup \
+      "Set up this fresh git worktree by following .opencode/setup.md.") ||
+      echo "ticket: warning: setup agent reported failures; continuing anyway" >&2
   fi
 else
   echo "worktree $wt already exists, resuming there"
