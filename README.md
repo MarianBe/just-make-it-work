@@ -119,7 +119,9 @@ haiku→mini/nano/flash/lite→sonnet.
 With [fzf](https://github.com/junegunn/fzf) installed you get an arrow-key
 picker, nested by provider: choose the provider first, then fuzzy-search its
 models. Esc at the model level goes back to providers; Esc at the provider
-level keeps the suggested default. Without fzf it falls back to a numbered
+level keeps the suggested default. fzf is not preinstalled on macOS — the
+installer offers to `brew install fzf` when it's missing (interactive runs
+with Homebrew only). Declining, or no fzf/brew, falls back to the numbered
 list.
 
 Non-interactive installs (no tty) take the detected defaults. Skip the

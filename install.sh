@@ -79,6 +79,20 @@ fi
 HAVE_FZF=""
 if command -v fzf >/dev/null 2>&1; then
   HAVE_FZF=1
+elif [ -n "$TTY" ] && command -v brew >/dev/null 2>&1; then
+  # fzf isn't preinstalled on macOS; offer it for the arrow-key picker
+  printf "fzf not found — install via Homebrew for an arrow-key model picker? [Y/n] " >/dev/tty
+  read -r ans </dev/tty || ans="n"
+  case "$ans" in
+    [nN]*) ;;
+    *)
+      if brew install fzf >/dev/tty 2>&1; then
+        HAVE_FZF=1
+      else
+        echo "fzf install failed, falling back to the numbered list" >/dev/tty
+      fi
+      ;;
+  esac
 fi
 
 choose_model_fzf() {
