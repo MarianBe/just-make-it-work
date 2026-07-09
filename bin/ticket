@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+#
+# ticket — start an opencode orchestrator session for a ticket in its own
+# git worktree, so multiple tickets can run in parallel.
+#
+#   ticket ABC-123              create worktree + branch ticket/ABC-123, launch opencode
+#   ticket ABC-123 develop      base the new branch on 'develop' instead of the default branch
+#   ticket cleanup ABC-123      remove the worktree (branch is kept)
+#   ticket list                 list ticket worktrees for this repo
+#
+set -euo pipefail
+
+die() {
+  echo "ticket: $*" >&2
+  exit 1
+}
+
+usage() {
+  sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+[ $# -ge 1 ] || usage 1
+case "$1" in
+  -h | --help) usage 0 ;;
+esac
+
+command -v opencode >/dev/null 2>&1 || die "opencode not found in PATH (https://opencode.ai)"
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "run this inside a git repository"
+repo_name="$(basename "$root")"
+parent_dir="$(dirname "$root")"
+
+worktree_path() {
+  echo "${parent_dir}/${repo_name}-$1"
+}
+
+sanitize() {
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "invalid ticket id: '$1' (letters, digits, . _ - only)"
+}
+
+case "$1" in
+  list)
+    git -C "$root" worktree list | grep -F "${repo_name}-" || echo "no ticket worktrees"
+    exit 0
+    ;;
+  cleanup)
+    [ $# -ge 2 ] || die "usage: ticket cleanup <TICKET-ID> [--force]"
+    sanitize "$2"
+    wt="$(worktree_path "$2")"
+    [ -d "$wt" ] || die "no worktree at $wt"
+    if [ "${3:-}" = "--force" ]; then
+      git -C "$root" worktree remove --force "$wt"
+    else
+      git -C "$root" worktree remove "$wt" ||
+        die "worktree has uncommitted changes; commit them or rerun with --force"
+    fi
+    echo "removed $wt (branch ticket/$2 kept; delete with: git branch -D ticket/$2)"
+    exit 0
+    ;;
+esac
+
+id="$1"
+base="${2:-}"
+sanitize "$id"
+wt="$(worktree_path "$id")"
+branch="ticket/${id}"
+
+if [ ! -d "$wt" ]; then
+  if git -C "$root" show-ref --verify --quiet "refs/heads/${branch}"; then
+    echo "branch ${branch} exists, reusing it"
+    git -C "$root" worktree add "$wt" "$branch"
+  else
+    if [ -z "$base" ]; then
+      base="$(git -C "$root" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')" || true
+      [ -n "$base" ] || base="$(git -C "$root" symbolic-ref --short HEAD)"
+    fi
+    echo "creating worktree $wt (branch ${branch} from ${base})"
+    git -C "$root" worktree add -b "$branch" "$wt" "$base"
+  fi
+  # optional per-repo setup hook (copy .env, install deps, ...)
+  if [ -x "$root/.opencode/worktree-setup.sh" ]; then
+    echo "running .opencode/worktree-setup.sh"
+    (cd "$wt" && "$root/.opencode/worktree-setup.sh")
+  fi
+else
+  echo "worktree $wt already exists, resuming there"
+fi
+
+cd "$wt"
+exec opencode --agent orchestrator \
+  --prompt "Work on ticket ${id}. Fetch the ticket, present your implementation plan, then delegate implementation to the worker subagent and verify, per your orchestrator workflow."

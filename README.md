@@ -1,0 +1,116 @@
+# just-make-it-work
+
+Give [opencode](https://opencode.ai) a Linear or Jira ticket id. An **Opus
+orchestrator** fetches the ticket, writes a plan, and delegates the
+implementation to **Sonnet worker subagents** — inside a dedicated **git
+worktree per ticket**, so you can run several tickets in parallel.
+
+## Install (one command)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/MarianBe/just-make-it-work/main/install.sh | bash
+```
+
+Then authenticate the trackers once (opens your browser):
+
+```sh
+opencode mcp auth linear
+opencode mcp auth jira
+```
+
+That's it. The installer puts:
+
+| What | Where |
+|---|---|
+| `orchestrator` primary agent (Opus, can't edit files) | `~/.config/opencode/agents/orchestrator.md` |
+| `worker` subagent (Sonnet, does the implementation) | `~/.config/opencode/agents/worker.md` |
+| `/ticket` command | `~/.config/opencode/commands/ticket.md` |
+| `ticket` wrapper CLI | `~/.local/bin/ticket` |
+| Linear + Jira remote MCP servers | merged into `~/.config/opencode/opencode.json` |
+
+## Usage
+
+```sh
+cd ~/code/my-app
+ticket ABC-123
+```
+
+This:
+
+1. Creates a git worktree at `../my-app-ABC-123` on branch `ticket/ABC-123`
+   (based on your default branch; pass a second arg to override:
+   `ticket ABC-123 develop`).
+2. Runs `.opencode/worktree-setup.sh` from your repo if it exists (put
+   `.env` copying, `pnpm install`, etc. there).
+3. Launches the opencode TUI in that worktree with the orchestrator agent and
+   the ticket already queued.
+
+The orchestrator then: fetches the ticket (tries Linear, falls back to Jira) →
+explores the code → shows you a plan → dispatches self-contained tasks to the
+Sonnet `worker` subagent (parallel where independent) → reviews diffs, runs
+tests → commits on `ticket/ABC-123`. It never edits files itself — write/edit
+tools are disabled on the orchestrator, so all implementation goes through
+workers.
+
+### Parallel tickets
+
+Each ticket lives in its own worktree + branch + opencode session. Open another
+terminal (or tmux pane):
+
+```sh
+ticket XYZ-456
+```
+
+Nothing collides — separate directories, separate branches.
+
+### Housekeeping
+
+```sh
+ticket list                    # worktrees for this repo
+ticket cleanup ABC-123         # remove worktree after merging (keeps branch)
+ticket cleanup ABC-123 --force # discard uncommitted changes too
+```
+
+Re-running `ticket ABC-123` on an existing worktree just reopens opencode
+there. Existing `ticket/ABC-123` branches are reused.
+
+### Without the wrapper
+
+Inside any opencode session you can also run the command directly:
+
+```
+/ticket ABC-123
+```
+
+In the **desktop app**, create a new session, pick "worktree" in the
+new-session view, then run `/ticket ABC-123` — same result as the CLI wrapper.
+
+## Models
+
+Defaults: orchestrator `anthropic/claude-opus-4-8`, worker
+`anthropic/claude-sonnet-5`. Change the `model:` line in
+`~/.config/opencode/agents/*.md`, or override per-agent in `opencode.json`:
+
+```json
+{
+  "agent": {
+    "worker": { "model": "anthropic/claude-sonnet-5" }
+  }
+}
+```
+
+## Jira note
+
+The installer registers Atlassian's remote MCP (`https://mcp.atlassian.com/v1/sse`).
+If your org runs Jira Data Center / self-hosted, replace the `jira` entry in
+`~/.config/opencode/opencode.json` with your own MCP server.
+
+## Uninstall
+
+```sh
+rm ~/.config/opencode/agents/{orchestrator,worker}.md \
+   ~/.config/opencode/commands/ticket.md \
+   ~/.local/bin/ticket
+```
+
+and remove the `linear` / `jira` entries from `~/.config/opencode/opencode.json`.
