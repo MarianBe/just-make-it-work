@@ -10,6 +10,9 @@
 #   ticket cleanup ABC-123             remove the worktree (branch is kept)
 #   ticket list                        list ticket worktrees for this repo
 #
+#   --code   open the worktree in VS Code and drive the ticket with Copilot
+#            agent chat (code chat) instead of the opencode TUI
+#
 set -euo pipefail
 
 die() {
@@ -18,14 +21,44 @@ die() {
 }
 
 usage() {
-  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
+}
+
+# strip --code out of the args; it may appear anywhere
+USE_CODE=""
+args=()
+for a in "$@"; do
+  if [ "$a" = "--code" ]; then
+    USE_CODE=1
+  else
+    args+=("$a")
+  fi
+done
+set -- ${args[@]+"${args[@]}"}
+
+launch_code() {
+  # $1 worktree dir, $2 prompt for Copilot agent chat (empty = just open)
+  command -v code >/dev/null 2>&1 ||
+    die "'code' CLI not found (VS Code: run 'Shell Command: Install code command in PATH')"
+  cd "$1"
+  code .
+  if [ -n "${2:-}" ]; then
+    # no combined open-folder-and-chat flag exists; give the window a moment
+    # to become the active one, then start chat in it (-r = reuse window)
+    sleep 3
+    exec code chat -r -m agent "$2"
+  fi
+  exit 0
 }
 
 continue_session() {
   # $1 worktree dir; remaining args = optional feedback for the session
   local wt="$1"
   shift
+  if [ -n "$USE_CODE" ]; then
+    launch_code "$wt" "${*:-}"
+  fi
   cd "$wt"
   # opencode scopes the session list to the current worktree directory, so
   # --continue picks up this ticket's latest session, not another ticket's
@@ -113,6 +146,10 @@ if [ -f "$wt/.opencode/setup.md" ]; then
   (cd "$wt" && opencode run --agent setup \
     "Set up this fresh git worktree by following .opencode/setup.md.") ||
     echo "ticket: warning: setup agent reported failures; continuing anyway" >&2
+fi
+
+if [ -n "$USE_CODE" ]; then
+  launch_code "$wt" "Work on ticket ${id}. Fetch the ticket from Linear or Jira, present a short implementation plan, then implement it on branch ${branch}, run the project's tests, and commit. Do not push."
 fi
 
 cd "$wt"

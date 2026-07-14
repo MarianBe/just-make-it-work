@@ -131,6 +131,10 @@ ticket continue ABC-123 [words]   # explicit continue (alias: resume)
 ticket list                       # ticket worktrees for this repo
 ticket cleanup ABC-123            # remove worktree after merge (branch kept)
 ticket cleanup ABC-123 --force    # discard uncommitted changes too
+
+ticket ABC-123 --code             # any of the above, but in VS Code:
+ticket ABC-123 --code <feedback>  #   opens the worktree window and starts
+                                  #   Copilot agent chat (code chat) there
 ```
 
 Sessions are scoped per worktree directory, so each ticket resumes its own
@@ -174,6 +178,20 @@ override per-agent in `opencode.json`:
 
 If `opencode` isn't installed when you run the installer, the agent files keep
 Anthropic defaults — rerun the installer afterwards or edit the files.
+
+### Prefer VS Code? `--code`
+
+`ticket ABC-123 --code` creates the same worktree (setup agent bootstrap
+included), opens it in VS Code, and starts a **Copilot agent chat** with the
+ticket prompt via [`code chat`](https://code.visualstudio.com/docs/configure/command-line#_start-chat-from-the-command-line).
+With an existing worktree, `--code` reopens the window (add feedback words to
+drop them straight into a new agent chat).
+
+Heads up: in this mode GitHub Copilot does the work, not the opencode
+orchestrator/worker agents — the Opus/Sonnet role split doesn't apply, and
+fetching the ticket needs Linear/Jira MCP configured in VS Code
+(Copilot → MCP servers) rather than in opencode. Needs the `code` CLI on your
+PATH ("Shell Command: Install 'code' command in PATH").
 
 ## Notes
 
