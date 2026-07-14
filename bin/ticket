@@ -44,10 +44,11 @@ launch_code() {
   cd "$1"
   code .
   if [ -n "${2:-}" ]; then
-    # no combined open-folder-and-chat flag exists; give the window a moment
-    # to become the active one, then start chat in it (-r = reuse window)
-    sleep 3
-    exec code chat -r -m agent "$2"
+    # no combined open-folder-and-chat flag exists: open the window first,
+    # then start chat. Run without -r/-n — code chat targets the window whose
+    # folder matches the cwd (-r would hijack the previously active window).
+    sleep 4
+    exec code chat -m agent "$2"
   fi
   exit 0
 }
